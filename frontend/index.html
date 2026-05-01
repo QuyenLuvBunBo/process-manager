@@ -1,0 +1,1462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Linux Process Manager</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════
+   ROOT & THEME — Industrial terminal aesthetic
+═══════════════════════════════════════════ */
+:root {
+  --bg-void:    #080b0f;
+  --bg-surface: #0d1117;
+  --bg-card:    #111722;
+  --bg-card2:   #161d2b;
+  --border:     #1e2d3d;
+  --border-glow:#2a4060;
+  --green:      #00ff88;
+  --green-dim:  #00cc6a;
+  --green-muted:#004d29;
+  --cyan:       #00cfff;
+  --cyan-muted: #003d4d;
+  --amber:      #ffaa00;
+  --amber-muted:#3d2900;
+  --red:        #ff3355;
+  --red-muted:  #3d0012;
+  --blue:       #4488ff;
+  --purple:     #aa66ff;
+  --text-bright:#e8f4ff;
+  --text-main:  #8899aa;
+  --text-dim:   #445566;
+  --font-mono:  'JetBrains Mono', monospace;
+  --font-display:'Syne', sans-serif;
+  --radius:     6px;
+  --glow-green: 0 0 20px rgba(0,255,136,0.15);
+  --glow-cyan:  0 0 20px rgba(0,207,255,0.15);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--font-mono);
+  background: var(--bg-void);
+  color: var(--text-main);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* scan-line overlay */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,0,0,0.04) 2px,
+    rgba(0,0,0,0.04) 4px
+  );
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* ═══════════ LAYOUT ═══════════ */
+.layout {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  grid-template-rows: 60px 1fr;
+  min-height: 100vh;
+}
+
+/* ═══════════ HEADER ═══════════ */
+header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 0 24px;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.logo-icon {
+  width: 28px; height: 28px;
+  background: var(--green);
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  animation: pulse-hex 2s ease-in-out infinite;
+}
+
+@keyframes pulse-hex {
+  0%,100% { box-shadow: 0 0 0 0 rgba(0,255,136,0.4); }
+  50%      { box-shadow: 0 0 0 8px rgba(0,255,136,0); }
+}
+
+.logo-text {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text-bright);
+  letter-spacing: -0.5px;
+}
+.logo-text span { color: var(--green); }
+
+.header-stats {
+  display: flex;
+  gap: 24px;
+  margin-left: auto;
+}
+
+.hstat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+}
+.hstat-label { font-size: 9px; color: var(--text-dim); letter-spacing: 1px; text-transform: uppercase; }
+.hstat-value { font-size: 14px; font-weight: 600; color: var(--green); font-variant-numeric: tabular-nums; }
+
+.header-time {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* ═══════════ SIDEBAR ═══════════ */
+aside {
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border);
+  padding: 16px 0;
+  overflow-y: auto;
+}
+
+.nav-section {
+  padding: 8px 16px 4px;
+  font-size: 9px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 16px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-main);
+  transition: all 0.15s;
+  border-left: 2px solid transparent;
+}
+.nav-item:hover { background: var(--bg-card); color: var(--text-bright); }
+.nav-item.active {
+  background: var(--bg-card);
+  color: var(--green);
+  border-left-color: var(--green);
+}
+.nav-icon { width: 16px; text-align: center; opacity: 0.7; }
+
+.mini-chart {
+  margin: 12px 16px;
+  padding: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.mini-chart-label {
+  font-size: 9px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+  display: flex;
+  justify-content: space-between;
+}
+.mini-chart-label span { color: var(--green); font-weight: 600; }
+.bar-track {
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+.bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.5s ease;
+}
+.bar-fill.green  { background: var(--green); }
+.bar-fill.cyan   { background: var(--cyan); }
+.bar-fill.amber  { background: var(--amber); }
+
+/* ═══════════ MAIN CONTENT ═══════════ */
+main {
+  overflow-y: auto;
+  background: var(--bg-void);
+}
+
+.page { display: none; padding: 20px; }
+.page.active { display: block; }
+
+/* ═══════════ CARDS ═══════════ */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.stat-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.2s;
+}
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 2px;
+}
+.stat-card.green::before  { background: var(--green); }
+.stat-card.cyan::before   { background: var(--cyan); }
+.stat-card.amber::before  { background: var(--amber); }
+.stat-card.purple::before { background: var(--purple); }
+
+.stat-card:hover { border-color: var(--border-glow); }
+
+.stat-label { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 6px; }
+.stat-value { font-size: 28px; font-weight: 700; font-family: var(--font-display); color: var(--text-bright); line-height: 1; }
+.stat-unit  { font-size: 11px; color: var(--text-dim); margin-left: 4px; }
+.stat-sub   { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+
+.stat-bar { height: 3px; background: var(--border); border-radius: 2px; margin-top: 10px; overflow: hidden; }
+.stat-bar-fill { height: 100%; border-radius: 2px; transition: width 0.6s ease; }
+
+/* ═══════════ PROCESS TABLE ═══════════ */
+.panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-card2);
+}
+
+.panel-title {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-bright);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.panel-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.search-input {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 5px 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-bright);
+  outline: none;
+  width: 180px;
+  transition: border-color 0.2s;
+}
+.search-input:focus { border-color: var(--green); }
+.search-input::placeholder { color: var(--text-dim); }
+
+.btn {
+  padding: 5px 12px;
+  border-radius: var(--radius);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.15s;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.btn-ghost { background: transparent; border-color: var(--border); color: var(--text-main); }
+.btn-ghost:hover { border-color: var(--border-glow); color: var(--text-bright); }
+.btn-green { background: rgba(0,255,136,0.1); border-color: var(--green-dim); color: var(--green); }
+.btn-green:hover { background: rgba(0,255,136,0.2); box-shadow: var(--glow-green); }
+.btn-red { background: rgba(255,51,85,0.1); border-color: var(--red); color: var(--red); }
+.btn-red:hover { background: rgba(255,51,85,0.2); }
+.btn-cyan { background: rgba(0,207,255,0.1); border-color: var(--cyan); color: var(--cyan); }
+.btn-cyan:hover { background: rgba(0,207,255,0.2); box-shadow: var(--glow-cyan); }
+.btn-amber { background: rgba(255,170,0,0.1); border-color: var(--amber); color: var(--amber); }
+.btn-sm { padding: 3px 8px; font-size: 10px; }
+
+.table-wrap { overflow-x: auto; }
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+thead th {
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-card2);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+thead th:hover { color: var(--text-main); }
+thead th.sorted { color: var(--cyan); }
+
+tbody tr {
+  border-bottom: 1px solid rgba(30,45,61,0.5);
+  transition: background 0.1s;
+  cursor: pointer;
+}
+tbody tr:hover { background: rgba(255,255,255,0.02); }
+tbody tr.selected { background: rgba(0,255,136,0.04); }
+
+td {
+  padding: 7px 12px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.pid-cell { color: var(--text-dim); font-size: 11px; }
+.name-cell { color: var(--text-bright); font-weight: 600; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 99px;
+  font-size: 10px;
+  font-weight: 600;
+}
+.status-badge::before { content: '●'; font-size: 7px; }
+.status-running  { background: var(--green-muted);  color: var(--green);  }
+.status-sleeping { background: var(--cyan-muted);   color: var(--cyan);   }
+.status-stopped  { background: var(--amber-muted);  color: var(--amber);  }
+.status-zombie   { background: var(--red-muted);    color: var(--red);    }
+.status-other    { background: rgba(100,100,100,0.2); color: var(--text-main); }
+
+.cpu-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 80px;
+}
+.cpu-bar-track {
+  flex: 1;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.cpu-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.5s;
+  background: linear-gradient(90deg, var(--green) 0%, var(--cyan) 100%);
+}
+.cpu-bar-fill.high { background: linear-gradient(90deg, var(--amber), var(--red)); }
+
+.mem-cell { color: var(--cyan); }
+.nice-cell { color: var(--purple); }
+
+.actions-cell { display: flex; gap: 4px; }
+
+/* ═══════════ PROCESS DETAIL PANEL ═══════════ */
+.detail-overlay {
+  position: fixed;
+  top: 60px; right: 0;
+  width: 360px;
+  height: calc(100vh - 60px);
+  background: var(--bg-surface);
+  border-left: 1px solid var(--border);
+  padding: 20px;
+  overflow-y: auto;
+  transform: translateX(100%);
+  transition: transform 0.25s ease;
+  z-index: 50;
+}
+.detail-overlay.open { transform: translateX(0); }
+
+.detail-close {
+  position: absolute;
+  top: 16px; right: 16px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-main);
+  cursor: pointer;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.detail-title {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text-bright);
+  margin-bottom: 4px;
+}
+.detail-pid { font-size: 12px; color: var(--text-dim); margin-bottom: 20px; }
+
+.detail-section { margin-bottom: 20px; }
+.detail-section-title {
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 0;
+  font-size: 12px;
+}
+.detail-key { color: var(--text-dim); }
+.detail-val { color: var(--text-bright); font-weight: 600; }
+
+.signal-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.priority-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.priority-input {
+  flex: 1;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--purple);
+  outline: none;
+  text-align: center;
+}
+.priority-input:focus { border-color: var(--purple); }
+
+/* ═══════════ CREATE PROCESS MODAL ═══════════ */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  display: none;
+}
+.modal-backdrop.open { display: flex; }
+.modal {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-glow);
+  border-radius: 8px;
+  padding: 28px;
+  width: 460px;
+  box-shadow: var(--glow-green);
+}
+.modal-title {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text-bright);
+  margin-bottom: 20px;
+}
+.modal-field { margin-bottom: 14px; }
+.modal-label { font-size: 11px; color: var(--text-dim); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 6px; display: block; }
+.modal-input {
+  width: 100%;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--green);
+  outline: none;
+}
+.modal-input:focus { border-color: var(--green-dim); }
+.quick-cmds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.quick-cmd {
+  padding: 3px 8px;
+  background: var(--bg-card2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.quick-cmd:hover { color: var(--green); border-color: var(--green-muted); }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+
+/* ═══════════ DEMO PAGE ═══════════ */
+.terminal-box {
+  background: #050810;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  font-size: 12px;
+  line-height: 1.8;
+  overflow-y: auto;
+  max-height: 400px;
+  min-height: 200px;
+}
+.terminal-line { color: var(--text-main); }
+.terminal-line.green { color: var(--green); }
+.terminal-line.cyan  { color: var(--cyan); }
+.terminal-line.amber { color: var(--amber); }
+.terminal-line.red   { color: var(--red); }
+.terminal-line.bright { color: var(--text-bright); font-weight: 600; }
+
+.info-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.info-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+.info-card-title {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--cyan);
+  margin-bottom: 10px;
+}
+.info-card ul { list-style: none; padding: 0; }
+.info-card li {
+  padding: 3px 0;
+  font-size: 11px;
+  color: var(--text-dim);
+  border-bottom: 1px solid rgba(30,45,61,0.5);
+}
+.info-card li:last-child { border: none; }
+.info-card li strong { color: var(--green); }
+
+/* ═══════════ TOAST ═══════════ */
+.toast-container {
+  position: fixed;
+  bottom: 20px; right: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 9000;
+}
+.toast {
+  padding: 10px 16px;
+  border-radius: var(--radius);
+  font-size: 12px;
+  border: 1px solid;
+  animation: slideIn 0.2s ease;
+  max-width: 300px;
+}
+.toast.success { background: var(--green-muted); border-color: var(--green-dim); color: var(--green); }
+.toast.error   { background: var(--red-muted);   border-color: var(--red);       color: var(--red);   }
+.toast.info    { background: var(--cyan-muted);   border-color: var(--cyan);      color: var(--cyan);  }
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+/* ═══════════ SPINNER ═══════════ */
+.spinner {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--green);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.live-dot {
+  width: 6px; height: 6px;
+  background: var(--green);
+  border-radius: 50%;
+  display: inline-block;
+  animation: blink 1.2s ease-in-out infinite;
+}
+@keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.2; } }
+
+/* ═══════════ PROCESS TREE ═══════════ */
+.tree-node {
+  padding: 4px 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.tree-node:hover { color: var(--text-bright); }
+.tree-indent { display: inline-block; width: 16px; color: var(--border-glow); }
+.tree-pid { color: var(--text-dim); font-size: 10px; margin-left: 4px; }
+.tree-state { font-size: 10px; }
+.tree-state.R { color: var(--green); }
+.tree-state.S { color: var(--cyan); }
+.tree-state.T { color: var(--amber); }
+.tree-state.Z { color: var(--red); }
+
+/* ═══════════ RESPONSIVE ═══════════ */
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; }
+  aside { display: none; }
+  .stat-grid { grid-template-columns: repeat(2, 1fr); }
+  .info-cards { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════ LAYOUT ═══════════════════════════════ -->
+<div class="layout">
+
+  <!-- HEADER -->
+  <header>
+    <div class="logo">
+      <div class="logo-icon"></div>
+      <div class="logo-text">Process<span>Manager</span></div>
+    </div>
+    <div style="font-size:11px; color:var(--text-dim); padding:4px 10px; background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius);">
+      <span class="live-dot"></span> &nbsp;LIVE — Linux /proc &amp; psutil
+    </div>
+    <div class="header-stats">
+      <div class="hstat">
+        <span class="hstat-label">CPU</span>
+        <span class="hstat-value" id="h-cpu">—</span>
+      </div>
+      <div class="hstat">
+        <span class="hstat-label">MEM</span>
+        <span class="hstat-value" id="h-mem">—</span>
+      </div>
+      <div class="hstat">
+        <span class="hstat-label">Processes</span>
+        <span class="hstat-value" id="h-procs">—</span>
+      </div>
+      <div class="hstat">
+        <span class="hstat-label">Load</span>
+        <span class="hstat-value" id="h-load">—</span>
+      </div>
+    </div>
+    <div class="header-time" id="header-time">—</div>
+  </header>
+
+  <!-- SIDEBAR -->
+  <aside>
+    <div class="nav-section">Navigation</div>
+    <div class="nav-item active" onclick="showPage('dashboard')">
+      <span class="nav-icon">⬡</span> Dashboard
+    </div>
+    <div class="nav-item" onclick="showPage('processes')">
+      <span class="nav-icon">≡</span> Processes
+    </div>
+    <div class="nav-item" onclick="showPage('tree')">
+      <span class="nav-icon">⎇</span> Process Tree
+    </div>
+    <div class="nav-item" onclick="showPage('demo')">
+      <span class="nav-icon">▶</span> Lifecycle Demo
+    </div>
+    <div class="nav-item" onclick="showPage('about')">
+      <span class="nav-icon">?</span> About / API
+    </div>
+
+    <div style="height: 20px;"></div>
+    <div class="nav-section">System Resources</div>
+
+    <div class="mini-chart">
+      <div class="mini-chart-label">CPU Usage <span id="sb-cpu">—</span></div>
+      <div class="bar-track"><div class="bar-fill green" id="sb-cpu-bar" style="width:0%"></div></div>
+      <div class="mini-chart-label">Memory <span id="sb-mem">—</span></div>
+      <div class="bar-track"><div class="bar-fill cyan" id="sb-mem-bar" style="width:0%"></div></div>
+      <div class="mini-chart-label">Swap <span id="sb-swap">—</span></div>
+      <div class="bar-track"><div class="bar-fill amber" id="sb-swap-bar" style="width:0%"></div></div>
+    </div>
+
+    <div class="nav-section">Process States</div>
+    <div style="padding:8px 16px; font-size:11px;">
+      <div style="display:flex;justify-content:space-between;padding:3px 0;"><span style="color:var(--green)">● Running</span><span id="sb-running">0</span></div>
+      <div style="display:flex;justify-content:space-between;padding:3px 0;"><span style="color:var(--cyan)">● Sleeping</span><span id="sb-sleeping">0</span></div>
+      <div style="display:flex;justify-content:space-between;padding:3px 0;"><span style="color:var(--amber)">● Stopped</span><span id="sb-stopped">0</span></div>
+      <div style="display:flex;justify-content:space-between;padding:3px 0;"><span style="color:var(--red)">● Zombie</span><span id="sb-zombie">0</span></div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main>
+
+    <!-- ── DASHBOARD PAGE ── -->
+    <div class="page active" id="page-dashboard">
+      <div class="stat-grid">
+        <div class="stat-card green">
+          <div class="stat-label">CPU Usage</div>
+          <div class="stat-value"><span id="cpu-val">—</span><span class="stat-unit">%</span></div>
+          <div class="stat-sub" id="cpu-sub">user / sys / idle</div>
+          <div class="stat-bar"><div class="stat-bar-fill" id="cpu-bar" style="background:var(--green);width:0%"></div></div>
+        </div>
+        <div class="stat-card cyan">
+          <div class="stat-label">Memory Used</div>
+          <div class="stat-value"><span id="mem-val">—</span><span class="stat-unit">MB</span></div>
+          <div class="stat-sub" id="mem-sub">of total MB</div>
+          <div class="stat-bar"><div class="stat-bar-fill" id="mem-bar" style="background:var(--cyan);width:0%"></div></div>
+        </div>
+        <div class="stat-card amber">
+          <div class="stat-label">Load Average</div>
+          <div class="stat-value" style="font-size:22px;"><span id="load-val">—</span></div>
+          <div class="stat-sub" id="load-sub">1m / 5m / 15m</div>
+        </div>
+        <div class="stat-card purple">
+          <div class="stat-label">Total Processes</div>
+          <div class="stat-value"><span id="total-procs">—</span></div>
+          <div class="stat-sub" id="procs-sub">running / sleeping</div>
+        </div>
+      </div>
+
+      <div class="info-cards">
+        <div class="info-card">
+          <div class="info-card-title">⬡ Core Linux APIs Used</div>
+          <ul>
+            <li><strong>fork()</strong> — Process creation</li>
+            <li><strong>exec()</strong> — Program execution</li>
+            <li><strong>wait() / waitpid()</strong> — Reap children</li>
+            <li><strong>kill()</strong> — Signal delivery</li>
+            <li><strong>nice() / setpriority()</strong> — Scheduling</li>
+            <li><strong>getpid() / getppid()</strong> — PID queries</li>
+            <li><strong>sigaction()</strong> — Signal handlers</li>
+            <li><strong>/proc filesystem</strong> — Kernel data</li>
+          </ul>
+        </div>
+        <div class="info-card">
+          <div class="info-card-title">⎇ Process Lifecycle</div>
+          <ul>
+            <li>1. <strong>New</strong> — fork() called</li>
+            <li>2. <strong>Ready</strong> — In scheduler queue</li>
+            <li>3. <strong>Running</strong> — On CPU</li>
+            <li>4. <strong>Waiting</strong> — I/O blocked</li>
+            <li>5. <strong>Stopped</strong> — SIGSTOP received</li>
+            <li>6. <strong>Zombie</strong> — Exited, not reaped</li>
+            <li>7. <strong>Dead</strong> — waitpid() completed</li>
+          </ul>
+        </div>
+        <div class="info-card">
+          <div class="info-card-title">◈ Signal Reference</div>
+          <ul>
+            <li><strong>SIGTERM (15)</strong> — Graceful shutdown</li>
+            <li><strong>SIGKILL (9)</strong> — Forced kill</li>
+            <li><strong>SIGSTOP (19)</strong> — Pause execution</li>
+            <li><strong>SIGCONT (18)</strong> — Resume process</li>
+            <li><strong>SIGHUP (1)</strong> — Reload config</li>
+            <li><strong>SIGCHLD (17)</strong> — Child state change</li>
+            <li><strong>SIGINT (2)</strong> — Ctrl+C interrupt</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Top Processes mini-table -->
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">⬆ Top Processes by Memory</div>
+          <button class="btn btn-ghost btn-sm" onclick="loadDashboard()">↻ Refresh</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>PID</th><th>Name</th><th>Status</th>
+                <th>CPU%</th><th>MEM (MB)</th><th>Nice</th><th>Threads</th>
+              </tr>
+            </thead>
+            <tbody id="top-procs-body">
+              <tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-dim)"><div class="spinner"></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── PROCESSES PAGE ── -->
+    <div class="page" id="page-processes">
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">≡ All Processes <span style="color:var(--text-dim);font-weight:400;font-size:12px" id="proc-count">&nbsp;</span></div>
+          <div class="panel-controls">
+            <input class="search-input" id="proc-search" placeholder="🔍 Filter by name..." oninput="filterProcs()">
+            <button class="btn btn-green" onclick="openCreateModal()">+ Create</button>
+            <button class="btn btn-ghost" onclick="loadProcesses()">↻ Refresh</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th onclick="sortProcs('pid')">PID ↕</th>
+                <th onclick="sortProcs('ppid')">PPID</th>
+                <th onclick="sortProcs('name')">Name ↕</th>
+                <th>User</th>
+                <th>Status</th>
+                <th onclick="sortProcs('-cpu_percent')">CPU% ↕</th>
+                <th onclick="sortProcs('-memory_mb')">MEM ↕</th>
+                <th onclick="sortProcs('nice')">Nice ↕</th>
+                <th>Threads</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="procs-body">
+              <tr><td colspan="10" style="text-align:center;padding:30px;color:var(--text-dim)"><div class="spinner"></div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── TREE PAGE ── -->
+    <div class="page" id="page-tree">
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">⎇ Process Tree</div>
+          <div class="panel-controls">
+            <input class="search-input" id="tree-root-pid" placeholder="Root PID (1)" style="width:120px;">
+            <button class="btn btn-cyan" onclick="loadTree()">Load Tree</button>
+          </div>
+        </div>
+        <div style="padding:16px;font-family:var(--font-mono);overflow:auto;max-height:600px;" id="tree-container">
+          <div style="color:var(--text-dim);text-align:center;padding:40px;"><div class="spinner"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── DEMO PAGE ── -->
+    <div class="page" id="page-demo">
+      <div class="panel" style="margin-bottom:16px;">
+        <div class="panel-header">
+          <div class="panel-title">▶ Process Lifecycle Demo</div>
+          <div class="panel-controls">
+            <button class="btn btn-green" id="demo-btn" onclick="runDemo()">Run C Demo</button>
+          </div>
+        </div>
+        <div style="padding:12px 16px;font-size:12px;color:var(--text-dim);border-bottom:1px solid var(--border);">
+          Executes the compiled <code style="color:var(--green)">process_manager.c</code> binary demonstrating 
+          fork() → exec() → SIGSTOP → SIGCONT → SIGTERM → waitpid() via Linux kernel APIs.
+        </div>
+        <div style="padding:16px;">
+          <div class="terminal-box" id="demo-output">
+            <div class="terminal-line" style="color:var(--text-dim)">Click "Run C Demo" to execute the lifecycle demonstration...</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <div class="panel-title">◈ Custom Process Launcher</div>
+          <button class="btn btn-green" onclick="openCreateModal()">+ Fork Process</button>
+        </div>
+        <div style="padding:16px;">
+          <div style="font-size:12px;color:var(--text-dim);margin-bottom:12px;">
+            Launch a real process using Linux <code style="color:var(--green)">fork()</code> + <code style="color:var(--green)">exec()</code> via the API.
+            Allowed commands: <code style="color:var(--cyan)">sleep, echo, ls, pwd, date, whoami, uname, uptime, hostname</code>
+          </div>
+          <div id="created-procs" style="display:flex;flex-direction:column;gap:6px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── ABOUT PAGE ── -->
+    <div class="page" id="page-about">
+      <div class="panel" style="margin-bottom:16px;">
+        <div class="panel-header"><div class="panel-title">? About This Project</div></div>
+        <div style="padding:20px;line-height:1.8;font-size:13px;color:var(--text-main);">
+          <p style="margin-bottom:12px;color:var(--text-bright);">
+            <strong>Linux Process Manager</strong> — A fullstack demonstration of Linux process management 
+            using kernel-level APIs.
+          </p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:16px;">
+            <div>
+              <div style="font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text-dim);margin-bottom:10px;">Architecture</div>
+              <ul style="list-style:none;font-size:12px;">
+                <li style="padding:4px 0;border-bottom:1px solid var(--border)">📄 <strong style="color:var(--green)">process_manager.c</strong> — Core Linux API demo</li>
+                <li style="padding:4px 0;border-bottom:1px solid var(--border)">🐍 <strong style="color:var(--cyan)">server.py</strong> — Flask REST API backend</li>
+                <li style="padding:4px 0;">🌐 <strong style="color:var(--purple)">index.html</strong> — This web dashboard</li>
+              </ul>
+            </div>
+            <div>
+              <div style="font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text-dim);margin-bottom:10px;">REST API Endpoints</div>
+              <ul style="list-style:none;font-size:11px;font-family:var(--font-mono);">
+                <li style="padding:3px 0;color:var(--green)">GET  /api/processes</li>
+                <li style="padding:3px 0;color:var(--green)">GET  /api/processes/&lt;pid&gt;</li>
+                <li style="padding:3px 0;color:var(--cyan)">POST /api/processes/create</li>
+                <li style="padding:3px 0;color:var(--red)">POST /api/processes/&lt;pid&gt;/kill</li>
+                <li style="padding:3px 0;color:var(--amber)">POST /api/processes/&lt;pid&gt;/priority</li>
+                <li style="padding:3px 0;color:var(--green)">GET  /api/system</li>
+                <li style="padding:3px 0;color:var(--green)">GET  /api/tree</li>
+                <li style="padding:3px 0;color:var(--purple)">POST /api/demo/lifecycle</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main><!-- /main -->
+</div><!-- /layout -->
+
+<!-- ═══════════ DETAIL PANEL ═══════════ -->
+<div class="detail-overlay" id="detail-panel">
+  <button class="detail-close" onclick="closeDetail()">✕ Close</button>
+  <div class="detail-title" id="detail-name">—</div>
+  <div class="detail-pid" id="detail-pid-line">—</div>
+
+  <div class="detail-section">
+    <div class="detail-section-title">Process Info</div>
+    <div class="detail-row"><span class="detail-key">Status</span><span class="detail-val" id="d-status">—</span></div>
+    <div class="detail-row"><span class="detail-key">Parent PID</span><span class="detail-val" id="d-ppid">—</span></div>
+    <div class="detail-row"><span class="detail-key">User</span><span class="detail-val" id="d-user">—</span></div>
+    <div class="detail-row"><span class="detail-key">CPU%</span><span class="detail-val" id="d-cpu">—</span></div>
+    <div class="detail-row"><span class="detail-key">Memory</span><span class="detail-val" id="d-mem">—</span></div>
+    <div class="detail-row"><span class="detail-key">Threads</span><span class="detail-val" id="d-threads">—</span></div>
+    <div class="detail-row"><span class="detail-key">Nice</span><span class="detail-val" id="d-nice">—</span></div>
+    <div class="detail-row"><span class="detail-key">Open Files</span><span class="detail-val" id="d-files">—</span></div>
+    <div class="detail-row"><span class="detail-key">Connections</span><span class="detail-val" id="d-conn">—</span></div>
+  </div>
+
+  <div class="detail-section">
+    <div class="detail-section-title">Command</div>
+    <div style="font-size:11px;color:var(--green);word-break:break-all;padding:6px;background:var(--bg-card);border-radius:4px;" id="d-cmdline">—</div>
+  </div>
+
+  <div class="detail-section">
+    <div class="detail-section-title">Send Signal</div>
+    <div class="signal-grid">
+      <button class="btn btn-ghost btn-sm" onclick="sendSignal('SIGTERM')">SIGTERM</button>
+      <button class="btn btn-red btn-sm"   onclick="sendSignal('SIGKILL')">SIGKILL</button>
+      <button class="btn btn-amber btn-sm" onclick="sendSignal('SIGSTOP')">SIGSTOP</button>
+      <button class="btn btn-cyan btn-sm"  onclick="sendSignal('SIGCONT')">SIGCONT</button>
+      <button class="btn btn-ghost btn-sm" onclick="sendSignal('SIGHUP')">SIGHUP</button>
+      <button class="btn btn-ghost btn-sm" onclick="sendSignal('SIGINT')">SIGINT</button>
+    </div>
+  </div>
+
+  <div class="detail-section">
+    <div class="detail-section-title">Change Priority (Nice)</div>
+    <div style="font-size:11px;color:var(--text-dim);margin-bottom:6px;">-20 = highest priority &nbsp;|&nbsp; +19 = lowest</div>
+    <div class="priority-control">
+      <input class="priority-input" type="number" id="nice-input" min="-20" max="19" value="0">
+      <button class="btn btn-amber" onclick="setPriority()">Apply</button>
+    </div>
+  </div>
+
+  <div class="detail-section">
+    <div class="detail-section-title">/proc/&lt;pid&gt;/stat (Raw)</div>
+    <div style="font-size:10px;color:var(--text-dim);word-break:break-all;padding:6px;background:var(--bg-card);border-radius:4px;line-height:1.6;" id="d-raw">—</div>
+  </div>
+</div>
+
+<!-- ═══════════ CREATE MODAL ═══════════ -->
+<div class="modal-backdrop" id="create-modal">
+  <div class="modal">
+    <div class="modal-title">⬡ Fork + Exec Process</div>
+    <div class="modal-field">
+      <label class="modal-label">Command</label>
+      <input class="modal-input" id="create-cmd" placeholder="sleep 10" value="sleep 5">
+      <div class="quick-cmds">
+        <span class="quick-cmd" onclick="setCmd('sleep 10')">sleep 10</span>
+        <span class="quick-cmd" onclick="setCmd('sleep 30')">sleep 30</span>
+        <span class="quick-cmd" onclick="setCmd('echo Hello Linux')">echo Hello</span>
+        <span class="quick-cmd" onclick="setCmd('ls -la')">ls -la</span>
+        <span class="quick-cmd" onclick="setCmd('date')">date</span>
+        <span class="quick-cmd" onclick="setCmd('uname -a')">uname -a</span>
+        <span class="quick-cmd" onclick="setCmd('uptime')">uptime</span>
+        <span class="quick-cmd" onclick="setCmd('whoami')">whoami</span>
+        <span class="quick-cmd" onclick="setCmd('hostname')">hostname</span>
+      </div>
+    </div>
+    <div style="font-size:11px;color:var(--text-dim);padding:8px;background:var(--bg-card);border-radius:4px;border-left:2px solid var(--green-dim);">
+      <strong style="color:var(--green)">Linux API:</strong> Uses fork() to duplicate current process, 
+      then exec() to replace child image with the target program.
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeCreateModal()">Cancel</button>
+      <button class="btn btn-green" onclick="createProcess()">Fork + Exec</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ TOASTS ═══════════ -->
+<div class="toast-container" id="toasts"></div>
+
+<!-- ═══════════════════════════════════════════
+   JAVASCRIPT
+═══════════════════════════════════════════ -->
+<script>
+const API = 'http://localhost:5000/api';
+
+let allProcesses = [];
+let filteredProcesses = [];
+let selectedPid = null;
+let sortKey = 'pid';
+let autoRefresh = null;
+
+// ── Navigation ──────────────────────────────────────────────────
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n => {
+    if (n.textContent.toLowerCase().includes(name.split('-')[0].substring(0,5))) 
+      n.classList.add('active');
+  });
+  if (name === 'processes') loadProcesses();
+  if (name === 'dashboard') loadDashboard();
+  if (name === 'tree') loadTree();
+}
+
+// ── Time ─────────────────────────────────────────────────────────
+function updateTime() {
+  document.getElementById('header-time').textContent = new Date().toLocaleTimeString();
+}
+setInterval(updateTime, 1000); updateTime();
+
+// ── System Stats ─────────────────────────────────────────────────
+async function loadSystemStats() {
+  try {
+    const r = await fetch(API + '/system');
+    const d = await r.json();
+
+    const cpu = d.cpu.percent;
+    const memPct = d.memory.percent;
+    const swapPct = d.swap.percent;
+    const load = d.load_average;
+    const states = d.process_states || {};
+
+    // Header
+    document.getElementById('h-cpu').textContent  = cpu.toFixed(1) + '%';
+    document.getElementById('h-mem').textContent  = d.memory.used_mb.toFixed(0) + 'MB';
+    document.getElementById('h-procs').textContent = d.total_processes;
+    document.getElementById('h-load').textContent = (load['1min'] || 0).toFixed(2);
+
+    // Dashboard cards
+    document.getElementById('cpu-val').textContent  = cpu.toFixed(1);
+    document.getElementById('cpu-sub').textContent  = `${d.cpu.user}% user / ${d.cpu.system}% sys / ${d.cpu.idle}% idle`;
+    document.getElementById('cpu-bar').style.width  = cpu + '%';
+
+    document.getElementById('mem-val').textContent  = d.memory.used_mb.toFixed(0);
+    document.getElementById('mem-sub').textContent  = `of ${d.memory.total_mb.toFixed(0)} MB total`;
+    document.getElementById('mem-bar').style.width  = memPct + '%';
+
+    document.getElementById('load-val').textContent = (load['1min']||0).toFixed(2);
+    document.getElementById('load-sub').textContent = 
+      `${(load['1min']||0).toFixed(2)} / ${(load['5min']||0).toFixed(2)} / ${(load['15min']||0).toFixed(2)}`;
+
+    document.getElementById('total-procs').textContent = d.total_processes;
+    const running  = states['running']  || 0;
+    const sleeping = states['sleeping'] || 0;
+    document.getElementById('procs-sub').textContent = `${running} running / ${sleeping} sleeping`;
+
+    // Sidebar
+    document.getElementById('sb-cpu').textContent  = cpu.toFixed(1) + '%';
+    document.getElementById('sb-mem').textContent  = memPct.toFixed(1) + '%';
+    document.getElementById('sb-swap').textContent = swapPct.toFixed(1) + '%';
+    document.getElementById('sb-cpu-bar').style.width  = cpu + '%';
+    document.getElementById('sb-mem-bar').style.width  = memPct + '%';
+    document.getElementById('sb-swap-bar').style.width = swapPct + '%';
+
+    document.getElementById('sb-running').textContent  = running;
+    document.getElementById('sb-sleeping').textContent = sleeping;
+    document.getElementById('sb-stopped').textContent  = states['stopped'] || 0;
+    document.getElementById('sb-zombie').textContent   = states['zombie'] || 0;
+
+  } catch(e) {
+    console.warn('Stats error', e);
+  }
+}
+
+// ── Dashboard ────────────────────────────────────────────────────
+async function loadDashboard() {
+  await loadSystemStats();
+  try {
+    const r = await fetch(API + '/processes?sort=-memory_mb');
+    const d = await r.json();
+    const top = (d.processes || []).slice(0, 12);
+    renderTopProcs(top);
+  } catch(e) {}
+}
+
+function renderTopProcs(procs) {
+  const tbody = document.getElementById('top-procs-body');
+  if (!procs.length) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-dim);padding:20px">No processes</td></tr>'; return; }
+  tbody.innerHTML = procs.map(p => `
+    <tr onclick="openDetail(${p.pid})">
+      <td class="pid-cell">${p.pid}</td>
+      <td class="name-cell">${esc(p.name)}</td>
+      <td>${statusBadge(p.status)}</td>
+      <td>${cpuBar(p.cpu_percent)}</td>
+      <td class="mem-cell">${p.memory_mb.toFixed(1)}</td>
+      <td class="nice-cell">${p.nice}</td>
+      <td style="color:var(--text-dim)">${p.num_threads}</td>
+    </tr>
+  `).join('');
+}
+
+// ── Processes Page ────────────────────────────────────────────────
+async function loadProcesses() {
+  try {
+    const r = await fetch(API + '/processes?sort=' + sortKey);
+    const d = await r.json();
+    allProcesses = d.processes || [];
+    document.getElementById('proc-count').textContent = `(${allProcesses.length} total)`;
+    filterProcs();
+  } catch(e) {
+    showToast('Failed to load processes', 'error');
+  }
+}
+
+function filterProcs() {
+  const q = document.getElementById('proc-search')?.value.toLowerCase() || '';
+  filteredProcesses = q ? allProcesses.filter(p => p.name.toLowerCase().includes(q)) : allProcesses;
+  renderProcsTable(filteredProcesses);
+}
+
+function sortProcs(key) {
+  sortKey = key;
+  loadProcesses();
+}
+
+function renderProcsTable(procs) {
+  const tbody = document.getElementById('procs-body');
+  if (!procs.length) {
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--text-dim);padding:30px">No processes found</td></tr>';
+    return;
+  }
+  tbody.innerHTML = procs.map(p => `
+    <tr class="${p.pid === selectedPid ? 'selected' : ''}" onclick="openDetail(${p.pid})">
+      <td class="pid-cell">${p.pid}</td>
+      <td class="pid-cell">${p.ppid}</td>
+      <td class="name-cell">${esc(p.name)}</td>
+      <td style="color:var(--text-dim);font-size:11px">${esc(p.username||'')}</td>
+      <td>${statusBadge(p.status)}</td>
+      <td>${cpuBar(p.cpu_percent)}</td>
+      <td class="mem-cell">${p.memory_mb.toFixed(1)}</td>
+      <td class="nice-cell">${p.nice}</td>
+      <td style="color:var(--text-dim)">${p.num_threads}</td>
+      <td class="actions-cell">
+        <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();quickKill(${p.pid},'${esc(p.name)}','SIGTERM')">⊗</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+// ── Detail Panel ─────────────────────────────────────────────────
+async function openDetail(pid) {
+  selectedPid = pid;
+  document.getElementById('detail-panel').classList.add('open');
+  document.getElementById('detail-name').textContent = '...';
+  document.getElementById('detail-pid-line').textContent = `PID ${pid}`;
+
+  try {
+    const r = await fetch(`${API}/processes/${pid}`);
+    if (!r.ok) { showToast('Process not found', 'error'); return; }
+    const p = await r.json();
+
+    document.getElementById('detail-name').textContent = p.name;
+    document.getElementById('detail-pid-line').textContent = `PID ${p.pid} — PPID ${p.ppid}`;
+    document.getElementById('d-status').innerHTML   = statusBadge(p.status);
+    document.getElementById('d-ppid').textContent   = p.ppid;
+    document.getElementById('d-user').textContent   = p.username || '—';
+    document.getElementById('d-cpu').textContent    = p.cpu_percent.toFixed(2) + '%';
+    document.getElementById('d-mem').textContent    = p.memory_mb.toFixed(2) + ' MB';
+    document.getElementById('d-threads').textContent= p.num_threads;
+    document.getElementById('d-nice').textContent   = p.nice;
+    document.getElementById('d-files').textContent  = (p.open_files||[]).length + ' files';
+    document.getElementById('d-conn').textContent   = (p.connections || 0) + ' connections';
+    document.getElementById('d-cmdline').textContent= p.cmdline || p.name;
+    document.getElementById('d-raw').textContent    = p.proc_stat_raw || '(not available)';
+    document.getElementById('nice-input').value     = p.nice;
+  } catch(e) {
+    showToast('Error loading process details', 'error');
+  }
+}
+
+function closeDetail() {
+  document.getElementById('detail-panel').classList.remove('open');
+  selectedPid = null;
+}
+
+async function sendSignal(sigName) {
+  if (!selectedPid) return;
+  if (sigName === 'SIGKILL' || sigName === 'SIGTERM') {
+    if (!confirm(`Send ${sigName} to PID ${selectedPid}?`)) return;
+  }
+  try {
+    const r = await fetch(`${API}/processes/${selectedPid}/kill`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({signal: sigName})
+    });
+    const d = await r.json();
+    if (r.ok) {
+      showToast(d.message, 'success');
+      if (sigName === 'SIGKILL' || sigName === 'SIGTERM') {
+        closeDetail();
+        setTimeout(loadProcesses, 500);
+      }
+    } else {
+      showToast(d.error, 'error');
+    }
+  } catch(e) {
+    showToast('Request failed', 'error');
+  }
+}
+
+async function setPriority() {
+  if (!selectedPid) return;
+  const nice = parseInt(document.getElementById('nice-input').value);
+  try {
+    const r = await fetch(`${API}/processes/${selectedPid}/priority`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({nice})
+    });
+    const d = await r.json();
+    if (r.ok) showToast(d.message, 'success');
+    else showToast(d.error, 'error');
+  } catch(e) {
+    showToast('Request failed', 'error');
+  }
+}
+
+async function quickKill(pid, name, sig) {
+  if (!confirm(`Send ${sig} to ${name} (PID ${pid})?`)) return;
+  try {
+    const r = await fetch(`${API}/processes/${pid}/kill`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({signal: sig})
+    });
+    const d = await r.json();
+    showToast(r.ok ? d.message : d.error, r.ok ? 'success' : 'error');
+    setTimeout(loadProcesses, 500);
+  } catch(e) {}
+}
+
+// ── Create Process Modal ──────────────────────────────────────────
+function openCreateModal() {
+  document.getElementById('create-modal').classList.add('open');
+}
+function closeCreateModal() {
+  document.getElementById('create-modal').classList.remove('open');
+}
+function setCmd(cmd) {
+  document.getElementById('create-cmd').value = cmd;
+}
+
+async function createProcess() {
+  const cmd = document.getElementById('create-cmd').value.trim();
+  if (!cmd) return;
+  try {
+    const r = await fetch(`${API}/processes/create`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({command: cmd})
+    });
+    const d = await r.json();
+    if (r.ok) {
+      showToast(d.message, 'success');
+      closeCreateModal();
+
+      // Show in demo page
+      const div = document.createElement('div');
+      div.style.cssText = 'padding:8px 12px;background:var(--bg-card);border:1px solid var(--green-muted);border-radius:4px;display:flex;justify-content:space-between;align-items:center;font-size:12px;';
+      div.innerHTML = `
+        <span><strong style="color:var(--green)">PID ${d.pid}</strong> 
+        <span style="color:var(--text-dim)">— ${esc(cmd)}</span></span>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-ghost btn-sm" onclick="openDetail(${d.pid})">Detail</button>
+          <button class="btn btn-red btn-sm" onclick="quickKill(${d.pid},'${esc(cmd)}','SIGTERM');this.closest('div[style]').remove()">Kill</button>
+        </div>
+      `;
+      document.getElementById('created-procs').prepend(div);
+      setTimeout(loadProcesses, 500);
+    } else {
+      showToast(d.error, 'error');
+    }
+  } catch(e) {
+    showToast('Request failed', 'error');
+  }
+}
+
+// ── Process Tree ─────────────────────────────────────────────────
+async function loadTree() {
+  const rootPid = document.getElementById('tree-root-pid')?.value || 1;
+  const container = document.getElementById('tree-container');
+  container.innerHTML = '<div style="color:var(--text-dim);text-align:center;padding:40px;"><div class="spinner"></div></div>';
+
+  try {
+    const r = await fetch(`${API}/tree?root=${rootPid}`);
+    const d = await r.json();
+    if (d.tree) {
+      container.innerHTML = renderTreeNode(d.tree, 0);
+    } else {
+      container.innerHTML = '<div style="color:var(--red);padding:20px;">Root process not found</div>';
+    }
+  } catch(e) {
+    container.innerHTML = '<div style="color:var(--red);padding:20px;">Failed to load tree. Is the API running?</div>';
+  }
+}
+
+function renderTreeNode(node, depth) {
+  const indent = '  '.repeat(depth);
+  const prefix = depth > 0 ? '└─ ' : '';
+  const stateClass = node.status ? node.status[0].toUpperCase() : 'S';
+  const niceStr = node.nice !== 0 ? ` <span style="color:var(--purple)">nice:${node.nice}</span>` : '';
+  let html = `<div class="tree-node" onclick="openDetail(${node.pid})">
+    <span style="color:var(--border-glow);font-size:11px">${indent}${prefix}</span>
+    <span style="color:var(--cyan)">${esc(node.name)}</span>
+    <span class="tree-pid">[${node.pid}]</span>
+    <span class="tree-state ${stateClass}" title="${node.status}">${node.status?.[0]||'?'}</span>
+    ${niceStr}
+  </div>`;
+  for (const child of (node.children || [])) {
+    html += renderTreeNode(child, depth + 1);
+  }
+  return html;
+}
+
+// ── Lifecycle Demo ────────────────────────────────────────────────
+async function runDemo() {
+  const btn = document.getElementById('demo-btn');
+  const out = document.getElementById('demo-output');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Running...';
+  out.innerHTML = '<div class="terminal-line cyan">$ ./process_manager demo</div>';
+
+  try {
+    const r = await fetch(`${API}/demo/lifecycle`, { method: 'POST' });
+    const d = await r.json();
+
+    if (d.output) {
+      const lines = d.output.split('\n');
+      out.innerHTML = '<div class="terminal-line cyan">$ ./process_manager demo</div>' +
+        lines.map(l => {
+          let cls = 'terminal-line';
+          if (l.includes('[CHILD]') || l.includes('✓')) cls += ' green';
+          else if (l.includes('[PARENT]') || l.includes('[PRIORITY]')) cls += ' cyan';
+          else if (l.includes('[KILL]') || l.includes('SIGSTOP') || l.includes('SIGCONT')) cls += ' amber';
+          else if (l.includes('failed') || l.includes('error')) cls += ' red';
+          else if (l.includes('═══') || l.includes('───')) cls += ' bright';
+          return `<div class="${cls}">${esc(l)}</div>`;
+        }).join('');
+    } else if (d.error) {
+      out.innerHTML += `<div class="terminal-line red">Error: ${esc(d.error)}</div>`;
+    }
+  } catch(e) {
+    out.innerHTML += '<div class="terminal-line red">API not reachable. Start server.py first.</div>';
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = 'Run C Demo';
+}
+
+// ── Helpers ──────────────────────────────────────────────────────
+function statusBadge(status) {
+  const cls = status === 'running'  ? 'status-running'  :
+              status === 'sleeping' ? 'status-sleeping' :
+              status === 'stopped'  ? 'status-stopped'  :
+              status === 'zombie'   ? 'status-zombie'   : 'status-other';
+  return `<span class="status-badge ${cls}">${status}</span>`;
+}
+
+function cpuBar(pct) {
+  const w = Math.min(pct, 100);
+  const cls = w > 50 ? 'cpu-bar-fill high' : 'cpu-bar-fill';
+  return `<div class="cpu-bar">
+    <div class="cpu-bar-track"><div class="${cls}" style="width:${w}%"></div></div>
+    <span style="font-size:11px;color:var(--text-dim);min-width:34px">${pct.toFixed(1)}%</span>
+  </div>`;
+}
+
+function esc(str) {
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function showToast(msg, type='info') {
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.textContent = msg;
+  document.getElementById('toasts').appendChild(t);
+  setTimeout(() => t.remove(), 4000);
+}
+
+// ── Auto-refresh ──────────────────────────────────────────────────
+setInterval(loadSystemStats, 3000);
+
+// ── Boot ─────────────────────────────────────────────────────────
+loadDashboard();
+loadTree();
+</script>
+</body>
+</html>
