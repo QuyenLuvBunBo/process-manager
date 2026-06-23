@@ -1065,7 +1065,7 @@ function showPage(name) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + name).classList.add('active');
   document.querySelectorAll('.nav-item').forEach(n => {
-    if (n.textContent.toLowerCase().includes(name.split('-')[0].substring(0,5))) 
+    if (n.textContent.toLowerCase().includes(name.split('-')[0])) 
       n.classList.add('active');
   });
   if (name === 'processes') loadProcesses();
@@ -1261,6 +1261,9 @@ async function sendSignal(sigName) {
       if (sigName === 'SIGKILL' || sigName === 'SIGTERM') {
         closeDetail();
         setTimeout(loadProcesses, 500);
+      } else {
+        openDetail(selectedPid); 
+        setTimeout(loadProcesses, 500);
       }
     } else {
       showToast(d.error, 'error');
@@ -1280,8 +1283,10 @@ async function setPriority() {
       body: JSON.stringify({nice})
     });
     const d = await r.json();
-    if (r.ok) showToast(d.message, 'success');
-    else showToast(d.error, 'error');
+    if (r.ok) {showToast(d.message, 'success');
+      openDetail(selectedPid);
+      setTimeout(loadProcesses, 500);
+    } else showToast(d.error, 'error');
   } catch(e) {
     showToast('Request failed', 'error');
   }
