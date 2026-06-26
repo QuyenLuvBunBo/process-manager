@@ -1,18 +1,3 @@
-"""
-server.py — Linux Process Manager REST API
-Uses psutil + Linux /proc filesystem + subprocess to manage processes.
-
-Endpoints:
-  GET  /api/processes            — List all processes
-  GET  /api/processes/<pid>      — Single process details
-  GET  /api/processes/<pid>/children — Child processes
-  POST /api/processes/create     — Fork and run a command
-  POST /api/processes/<pid>/kill — Send signal to process
-  POST /api/processes/<pid>/priority — Change nice value
-  GET  /api/system               — CPU, memory, load averages
-  GET  /api/tree                 — Process tree (JSON)
-"""
-
 import os
 import sys
 import signal
@@ -26,43 +11,40 @@ from flask_cors import CORS
 app = Flask(__name__)
 CORS(app)
 
-# ── Helpers ──────────────────────────────────────────────────────────────────
-
 SIGNAL_MAP = {
     "SIGTERM": signal.SIGTERM,
     "SIGKILL": signal.SIGKILL,
     "SIGSTOP": signal.SIGSTOP,
     "SIGCONT": signal.SIGCONT,
-    "SIGHUP":  signal.SIGHUP,
-    "SIGINT":  signal.SIGINT,
+    "SIGHUP": signal.SIGHUP,
+    "SIGINT": signal.SIGINT,
 }
 
 STATE_LABELS = {
-    'R': 'Running',
-    'S': 'Sleeping',
-    'D': 'Waiting',
-    'Z': 'Zombie',
-    'T': 'Stopped',
-    'I': 'Idle',
-    'X': 'Dead',
+    "R": "Running",
+    "S": "Sleeping",
+    "D": "Waiting",
+    "Z": "Zombie",
+    "T": "Stopped",
+    "I": "Idle",
+    "X": "Dead",
 }
 
 def process_to_dict(proc):
-    """Convert a psutil.Process to a serializable dictionary."""
     try:
         with proc.oneshot():
             info = {
-                "pid":        proc.pid,
-                "ppid":       proc.ppid(),
-                "name":       proc.name(),
-                "status":     proc.status(),
+                "pid": proc.pid,
+                "ppid": proc.ppid(),
+                "name": proc.name(),
+                "status": proc.status(),
                 "state_label": STATE_LABELS.get(proc.status()[0].upper(), proc.status()),
                 "cpu_percent": proc.cpu_percent(interval=None),
-                "memory_mb":  round(proc.memory_info().rss / 1024 / 1024, 2),
-                "nice":       proc.nice(),
+                "memory_mb": round(proc.memory_info().rss / 1024 / 1024, 2),
+                "nice": proc.nice(),
                 "num_threads": proc.num_threads(),
                 "create_time": proc.create_time(),
-                "username":   proc.username(),
+                "username": proc.username(),
             }
             try:
                 info["cmdline"] = " ".join(proc.cmdline()) or proc.name()
@@ -74,7 +56,6 @@ def process_to_dict(proc):
 
 
 def read_proc_stat_raw(pid):
-    """Read raw /proc/<pid>/stat — demonstrating /proc filesystem access."""
     try:
         with open(f"/proc/{pid}/stat", "r") as f:
             return f.read().strip()
@@ -83,13 +64,12 @@ def read_proc_stat_raw(pid):
 
 
 def read_loadavg():
-    """Read /proc/loadavg directly (Linux API)."""
     try:
         with open("/proc/loadavg", "r") as f:
             parts = f.read().split()
             return {
-                "1min":  float(parts[0]),
-                "5min":  float(parts[1]),
+                "1min": float(parts[0]),
+                "5min": float(parts[1]),
                 "15min": float(parts[2]),
                 "running_threads": parts[3],
             }
@@ -98,14 +78,13 @@ def read_loadavg():
 
 
 def read_meminfo():
-    """Read /proc/meminfo directly (Linux API)."""
     data = {}
     try:
         with open("/proc/meminfo", "r") as f:
             for line in f:
                 parts = line.split()
                 if len(parts) >= 2:
-                    key = parts[0].rstrip(':')
+                    key = parts[0].rstrip(":")
                     val = int(parts[1])
                     data[key] = val
     except Exception:
@@ -113,22 +92,18 @@ def read_meminfo():
     return data
 
 
-# ── Process Routes ────────────────────────────────────────────────────────────
-
 @app.route("/api/processes", methods=["GET"])
 def list_processes():
-    """Return all running processes with key metrics."""
     sort_by = request.args.get("sort", "pid")
     filter_name = request.args.get("filter", "").lower()
 
-    # Warm up CPU percentages
     for proc in psutil.process_iter():
         try:
             proc.cpu_percent(interval=None)
         except Exception:
             pass
 
-    time.sleep(0.1)  # brief pause for CPU sampling
+    time.sleep(0.1)
 
     processes = []
     for proc in psutil.process_iter():
@@ -139,7 +114,6 @@ def list_processes():
             continue
         processes.append(d)
 
-    # Sort
     reverse = sort_by.startswith("-")
     key = sort_by.lstrip("-")
     if key in ("cpu_percent", "memory_mb", "pid", "nice", "num_threads"):
@@ -155,14 +129,12 @@ def list_processes():
 
 @app.route("/api/processes/<int:pid>", methods=["GET"])
 def get_process(pid):
-    """Get detailed info about a single process, including raw /proc stat."""
     try:
         proc = psutil.Process(pid)
         d = process_to_dict(proc)
         if d is None:
             return jsonify({"error": "Process not found"}), 404
 
-        # Enrich with raw /proc data
         d["proc_stat_raw"] = read_proc_stat_raw(pid)
 
         try:
@@ -182,7 +154,6 @@ def get_process(pid):
 
 @app.route("/api/processes/<int:pid>/children", methods=["GET"])
 def get_children(pid):
-    """Get immediate children of a process."""
     try:
         proc = psutil.Process(pid)
         children = []
@@ -197,32 +168,25 @@ def get_children(pid):
 
 @app.route("/api/processes/create", methods=["POST"])
 def create_process():
-    """
-    Fork + exec a new process using subprocess (wraps fork/exec).
-    Body: { "command": "sleep 10", "background": true }
-    """
     data = request.get_json() or {}
     command = data.get("command", "").strip()
 
     if not command:
         return jsonify({"error": "No command provided"}), 400
 
-    # Whitelist safe demo commands
     ALLOWED_PREFIXES = ["sleep", "echo", "ls", "pwd", "date", "whoami",
                         "cat /proc/version", "uname", "uptime", "hostname"]
     is_safe = any(command.startswith(p) for p in ALLOWED_PREFIXES)
     if not is_safe:
-        return jsonify({"error": "Command not in allowed list for safety", 
+        return jsonify({"error": "Command not in allowed list for safety",
                         "allowed": ALLOWED_PREFIXES}), 403
 
     try:
-        # os.fork() + exec via subprocess
-        # Demonstrating: background process creation
         proc = subprocess.Popen(
             command.split(),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            start_new_session=True   # setsid() — new session
+            start_new_session=True
         )
 
         return jsonify({
@@ -239,10 +203,6 @@ def create_process():
 
 @app.route("/api/processes/<int:pid>/kill", methods=["POST"])
 def kill_process(pid):
-    """
-    Send a signal to a process.
-    Body: { "signal": "SIGTERM" }  (default SIGTERM)
-    """
     data = request.get_json() or {}
     sig_name = data.get("signal", "SIGTERM").upper()
     sig = SIGNAL_MAP.get(sig_name)
@@ -251,7 +211,6 @@ def kill_process(pid):
         return jsonify({"error": f"Unknown signal: {sig_name}",
                         "valid": list(SIGNAL_MAP.keys())}), 400
 
-    # Safety: never kill critical system processes
     PROTECTED_PIDS = {1, os.getpid()}
     if pid in PROTECTED_PIDS:
         return jsonify({"error": "Cannot kill protected process"}), 403
@@ -260,7 +219,7 @@ def kill_process(pid):
         proc = psutil.Process(pid)
         proc_name = proc.name()
 
-        os.kill(pid, sig)  # ← Linux API: kill(2) syscall
+        os.kill(pid, sig)
 
         return jsonify({
             "success": True,
@@ -277,10 +236,6 @@ def kill_process(pid):
 
 @app.route("/api/processes/<int:pid>/priority", methods=["POST"])
 def set_priority(pid):
-    """
-    Change process scheduling priority (nice value).
-    Body: { "nice": 10 }   range: -20 (high) to +19 (low)
-    """
     data = request.get_json() or {}
     nice_val = data.get("nice")
 
@@ -292,7 +247,7 @@ def set_priority(pid):
     try:
         proc = psutil.Process(pid)
         old_nice = proc.nice()
-        proc.nice(nice_val)  # ← wraps setpriority(2) syscall
+        proc.nice(nice_val)
         new_nice = proc.nice()
 
         return jsonify({
@@ -309,14 +264,8 @@ def set_priority(pid):
         return jsonify({"error": "Permission denied (need root for negative nice)"}), 403
 
 
-# ── System Routes ─────────────────────────────────────────────────────────────
-
 @app.route("/api/system", methods=["GET"])
 def system_info():
-    """
-    Returns overall system stats.
-    Reads directly from /proc filesystem where possible.
-    """
     meminfo = read_meminfo()
     loadavg = read_loadavg()
 
@@ -324,11 +273,10 @@ def system_info():
     mem = psutil.virtual_memory()
     swap = psutil.swap_memory()
 
-    # Count processes by state
     state_counts = {}
-    for proc in psutil.process_iter(['status']):
+    for proc in psutil.process_iter(["status"]):
         try:
-            s = proc.info['status']
+            s = proc.info["status"]
             state_counts[s] = state_counts.get(s, 0) + 1
         except Exception:
             pass
@@ -338,23 +286,23 @@ def system_info():
             "percent": psutil.cpu_percent(interval=0.1),
             "count_logical": psutil.cpu_count(logical=True),
             "count_physical": psutil.cpu_count(logical=False),
-            "user":   round(cpu_times.user, 1),
+            "user": round(cpu_times.user, 1),
             "system": round(cpu_times.system, 1),
-            "idle":   round(cpu_times.idle, 1),
+            "idle": round(cpu_times.idle, 1),
         },
         "memory": {
-            "total_mb":     round(mem.total / 1024**2, 1),
-            "used_mb":      round(mem.used  / 1024**2, 1),
-            "free_mb":      round(mem.free  / 1024**2, 1),
+            "total_mb": round(mem.total / 1024**2, 1),
+            "used_mb": round(mem.used / 1024**2, 1),
+            "free_mb": round(mem.free / 1024**2, 1),
             "available_mb": round(mem.available / 1024**2, 1),
-            "percent":      mem.percent,
-            "cached_mb":    round(meminfo.get('Cached', 0) / 1024, 1),
-            "buffers_mb":   round(meminfo.get('Buffers', 0) / 1024, 1),
+            "percent": mem.percent,
+            "cached_mb": round(meminfo.get("Cached", 0) / 1024, 1),
+            "buffers_mb": round(meminfo.get("Buffers", 0) / 1024, 1),
         },
         "swap": {
             "total_mb": round(swap.total / 1024**2, 1),
-            "used_mb":  round(swap.used  / 1024**2, 1),
-            "percent":  swap.percent,
+            "used_mb": round(swap.used / 1024**2, 1),
+            "percent": swap.percent,
         },
         "load_average": loadavg,
         "process_states": state_counts,
@@ -366,7 +314,6 @@ def system_info():
 
 @app.route("/api/tree", methods=["GET"])
 def process_tree():
-    """Build a hierarchical process tree starting from PID 1."""
     root_pid = int(request.args.get("root", 1))
 
     def build_tree(pid, depth=0, max_depth=4):
@@ -375,10 +322,10 @@ def process_tree():
         try:
             proc = psutil.Process(pid)
             node = {
-                "pid":    pid,
-                "name":   proc.name(),
+                "pid": pid,
+                "name": proc.name(),
                 "status": proc.status(),
-                "nice":   proc.nice(),
+                "nice": proc.nice(),
                 "children": []
             }
             for child in proc.children(recursive=False):
@@ -395,10 +342,6 @@ def process_tree():
 
 @app.route("/api/demo/lifecycle", methods=["POST"])
 def demo_lifecycle():
-    """
-    Demonstrates the full process lifecycle via the compiled C program.
-    Runs ./process_manager demo and streams the output.
-    """
     binary = os.path.join(os.path.dirname(__file__), "process_manager")
     if not os.path.exists(binary):
         return jsonify({"error": "C binary not compiled. Run: gcc process_manager.c -o process_manager"}), 500
@@ -408,10 +351,9 @@ def demo_lifecycle():
             [binary, "demo"],
             capture_output=True, text=True, timeout=15
         )
-        # Strip ANSI color codes for JSON
         import re
-        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
-        output = ansi_escape.sub('', result.stdout)
+        ansi_escape = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+        output = ansi_escape.sub("", result.stdout)
         return jsonify({
             "output": output,
             "returncode": result.returncode
@@ -419,8 +361,6 @@ def demo_lifecycle():
     except subprocess.TimeoutExpired:
         return jsonify({"error": "Demo timed out"}), 500
 
-
-# ── Health Check ──────────────────────────────────────────────────────────────
 
 @app.route("/api/health", methods=["GET"])
 def health():

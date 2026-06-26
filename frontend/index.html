@@ -7,9 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
 <style>
-/* ═══════════════════════════════════════════
-   ROOT & THEME — Industrial terminal aesthetic
-═══════════════════════════════════════════ */
+
 :root {
   --bg-void:    #080b0f;
   --bg-surface: #0d1117;
@@ -48,7 +46,6 @@ body {
   overflow-x: hidden;
 }
 
-/* scan-line overlay */
 body::before {
   content: '';
   position: fixed;
@@ -64,7 +61,6 @@ body::before {
   z-index: 9999;
 }
 
-/* ═══════════ LAYOUT ═══════════ */
 .layout {
   display: grid;
   grid-template-columns: 240px 1fr;
@@ -72,7 +68,6 @@ body::before {
   min-height: 100vh;
 }
 
-/* ═══════════ HEADER ═══════════ */
 header {
   grid-column: 1 / -1;
   display: flex;
@@ -136,7 +131,6 @@ header {
   color: var(--text-dim);
 }
 
-/* ═══════════ SIDEBAR ═══════════ */
 aside {
   background: var(--bg-surface);
   border-right: 1px solid var(--border);
@@ -204,7 +198,6 @@ aside {
 .bar-fill.cyan   { background: var(--cyan); }
 .bar-fill.amber  { background: var(--amber); }
 
-/* ═══════════ MAIN CONTENT ═══════════ */
 main {
   overflow-y: auto;
   background: var(--bg-void);
@@ -213,7 +206,6 @@ main {
 .page { display: none; padding: 20px; }
 .page.active { display: block; }
 
-/* ═══════════ CARDS ═══════════ */
 .stat-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -251,7 +243,6 @@ main {
 .stat-bar { height: 3px; background: var(--border); border-radius: 2px; margin-top: 10px; overflow: hidden; }
 .stat-bar-fill { height: 100%; border-radius: 2px; transition: width 0.6s ease; }
 
-/* ═══════════ PROCESS TABLE ═══════════ */
 .panel {
   background: var(--bg-card);
   border: 1px solid var(--border);
@@ -405,7 +396,6 @@ td {
 
 .actions-cell { display: flex; gap: 4px; }
 
-/* ═══════════ PROCESS DETAIL PANEL ═══════════ */
 .detail-overlay {
   position: fixed;
   top: 60px; right: 0;
@@ -490,7 +480,6 @@ td {
 }
 .priority-input:focus { border-color: var(--purple); }
 
-/* ═══════════ CREATE PROCESS MODAL ═══════════ */
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -550,7 +539,6 @@ td {
 .quick-cmd:hover { color: var(--green); border-color: var(--green-muted); }
 .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
 
-/* ═══════════ DEMO PAGE ═══════════ */
 .terminal-box {
   background: #050810;
   border: 1px solid var(--border);
@@ -598,7 +586,6 @@ td {
 .info-card li:last-child { border: none; }
 .info-card li strong { color: var(--green); }
 
-/* ═══════════ TOAST ═══════════ */
 .toast-container {
   position: fixed;
   bottom: 20px; right: 20px;
@@ -624,7 +611,6 @@ td {
   to   { opacity: 1; transform: translateX(0); }
 }
 
-/* ═══════════ SPINNER ═══════════ */
 .spinner {
   display: inline-block;
   width: 14px; height: 14px;
@@ -644,7 +630,6 @@ td {
 }
 @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.2; } }
 
-/* ═══════════ PROCESS TREE ═══════════ */
 .tree-node {
   padding: 4px 0;
   display: flex;
@@ -662,7 +647,6 @@ td {
 .tree-state.T { color: var(--amber); }
 .tree-state.Z { color: var(--red); }
 
-/* ═══════════ RESPONSIVE ═══════════ */
 @media (max-width: 900px) {
   .layout { grid-template-columns: 1fr; }
   aside { display: none; }
@@ -673,10 +657,8 @@ td {
 </head>
 <body>
 
-<!-- ═══════════════════════════════ LAYOUT ═══════════════════════════════ -->
 <div class="layout">
 
-  <!-- HEADER -->
   <header>
     <div class="logo">
       <div class="logo-icon"></div>
@@ -706,7 +688,6 @@ td {
     <div class="header-time" id="header-time">—</div>
   </header>
 
-  <!-- SIDEBAR -->
   <aside>
     <div class="nav-section">Navigation</div>
     <div class="nav-item active" onclick="showPage('dashboard')">
@@ -746,10 +727,8 @@ td {
     </div>
   </aside>
 
-  <!-- MAIN -->
   <main>
 
-    <!-- ── DASHBOARD PAGE ── -->
     <div class="page active" id="page-dashboard">
       <div class="stat-grid">
         <div class="stat-card green">
@@ -816,7 +795,6 @@ td {
         </div>
       </div>
 
-      <!-- Top Processes mini-table -->
       <div class="panel">
         <div class="panel-header">
           <div class="panel-title">⬆ Top Processes by Memory</div>
@@ -838,7 +816,6 @@ td {
       </div>
     </div>
 
-    <!-- ── PROCESSES PAGE ── -->
     <div class="page" id="page-processes">
       <div class="panel">
         <div class="panel-header">
@@ -873,7 +850,6 @@ td {
       </div>
     </div>
 
-    <!-- ── TREE PAGE ── -->
     <div class="page" id="page-tree">
       <div class="panel">
         <div class="panel-header">
@@ -889,7 +865,6 @@ td {
       </div>
     </div>
 
-    <!-- ── DEMO PAGE ── -->
     <div class="page" id="page-demo">
       <div class="panel" style="margin-bottom:16px;">
         <div class="panel-header">
@@ -924,7 +899,6 @@ td {
       </div>
     </div>
 
-    <!-- ── ABOUT PAGE ── -->
     <div class="page" id="page-about">
       <div class="panel" style="margin-bottom:16px;">
         <div class="panel-header"><div class="panel-title">? About This Project</div></div>
@@ -960,10 +934,9 @@ td {
       </div>
     </div>
 
-  </main><!-- /main -->
-</div><!-- /layout -->
+  </main>
+</div>
 
-<!-- ═══════════ DETAIL PANEL ═══════════ -->
 <div class="detail-overlay" id="detail-panel">
   <button class="detail-close" onclick="closeDetail()">✕ Close</button>
   <div class="detail-title" id="detail-name">—</div>
@@ -1014,7 +987,6 @@ td {
   </div>
 </div>
 
-<!-- ═══════════ CREATE MODAL ═══════════ -->
 <div class="modal-backdrop" id="create-modal">
   <div class="modal">
     <div class="modal-title">⬡ Fork + Exec Process</div>
@@ -1044,12 +1016,8 @@ td {
   </div>
 </div>
 
-<!-- ═══════════ TOASTS ═══════════ -->
 <div class="toast-container" id="toasts"></div>
 
-<!-- ═══════════════════════════════════════════
-   JAVASCRIPT
-═══════════════════════════════════════════ -->
 <script>
 const API = 'http://localhost:5000/api';
 
@@ -1059,7 +1027,6 @@ let selectedPid = null;
 let sortKey = 'pid';
 let autoRefresh = null;
 
-// ── Navigation ──────────────────────────────────────────────────
 function showPage(name) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -1073,13 +1040,11 @@ function showPage(name) {
   if (name === 'tree') loadTree();
 }
 
-// ── Time ─────────────────────────────────────────────────────────
 function updateTime() {
   document.getElementById('header-time').textContent = new Date().toLocaleTimeString();
 }
 setInterval(updateTime, 1000); updateTime();
 
-// ── System Stats ─────────────────────────────────────────────────
 async function loadSystemStats() {
   try {
     const r = await fetch(API + '/system');
@@ -1091,13 +1056,11 @@ async function loadSystemStats() {
     const load = d.load_average;
     const states = d.process_states || {};
 
-    // Header
     document.getElementById('h-cpu').textContent  = cpu.toFixed(1) + '%';
     document.getElementById('h-mem').textContent  = d.memory.used_mb.toFixed(0) + 'MB';
     document.getElementById('h-procs').textContent = d.total_processes;
     document.getElementById('h-load').textContent = (load['1min'] || 0).toFixed(2);
 
-    // Dashboard cards
     document.getElementById('cpu-val').textContent  = cpu.toFixed(1);
     document.getElementById('cpu-sub').textContent  = `${d.cpu.user}% user / ${d.cpu.system}% sys / ${d.cpu.idle}% idle`;
     document.getElementById('cpu-bar').style.width  = cpu + '%';
@@ -1115,7 +1078,6 @@ async function loadSystemStats() {
     const sleeping = states['sleeping'] || 0;
     document.getElementById('procs-sub').textContent = `${running} running / ${sleeping} sleeping`;
 
-    // Sidebar
     document.getElementById('sb-cpu').textContent  = cpu.toFixed(1) + '%';
     document.getElementById('sb-mem').textContent  = memPct.toFixed(1) + '%';
     document.getElementById('sb-swap').textContent = swapPct.toFixed(1) + '%';
@@ -1133,7 +1095,6 @@ async function loadSystemStats() {
   }
 }
 
-// ── Dashboard ────────────────────────────────────────────────────
 async function loadDashboard() {
   await loadSystemStats();
   try {
@@ -1160,7 +1121,6 @@ function renderTopProcs(procs) {
   `).join('');
 }
 
-// ── Processes Page ────────────────────────────────────────────────
 async function loadProcesses() {
   try {
     const r = await fetch(API + '/processes?sort=' + sortKey);
@@ -1208,7 +1168,6 @@ function renderProcsTable(procs) {
   `).join('');
 }
 
-// ── Detail Panel ─────────────────────────────────────────────────
 async function openDetail(pid) {
   selectedPid = pid;
   document.getElementById('detail-panel').classList.add('open');
@@ -1306,7 +1265,6 @@ async function quickKill(pid, name, sig) {
   } catch(e) {}
 }
 
-// ── Create Process Modal ──────────────────────────────────────────
 function openCreateModal() {
   document.getElementById('create-modal').classList.add('open');
 }
@@ -1331,7 +1289,6 @@ async function createProcess() {
       showToast(d.message, 'success');
       closeCreateModal();
 
-      // Show in demo page
       const div = document.createElement('div');
       div.style.cssText = 'padding:8px 12px;background:var(--bg-card);border:1px solid var(--green-muted);border-radius:4px;display:flex;justify-content:space-between;align-items:center;font-size:12px;';
       div.innerHTML = `
@@ -1352,7 +1309,6 @@ async function createProcess() {
   }
 }
 
-// ── Process Tree ─────────────────────────────────────────────────
 async function loadTree() {
   const rootPid = document.getElementById('tree-root-pid')?.value || 1;
   const container = document.getElementById('tree-container');
@@ -1389,7 +1345,6 @@ function renderTreeNode(node, depth) {
   return html;
 }
 
-// ── Lifecycle Demo ────────────────────────────────────────────────
 async function runDemo() {
   const btn = document.getElementById('demo-btn');
   const out = document.getElementById('demo-output');
@@ -1424,7 +1379,6 @@ async function runDemo() {
   btn.innerHTML = 'Run C Demo';
 }
 
-// ── Helpers ──────────────────────────────────────────────────────
 function statusBadge(status) {
   const cls = status === 'running'  ? 'status-running'  :
               status === 'sleeping' ? 'status-sleeping' :
@@ -1456,10 +1410,8 @@ function showToast(msg, type='info') {
   setTimeout(() => t.remove(), 4000);
 }
 
-// ── Auto-refresh ──────────────────────────────────────────────────
 setInterval(loadSystemStats, 3000);
 
-// ── Boot ─────────────────────────────────────────────────────────
 loadDashboard();
 loadTree();
 </script>

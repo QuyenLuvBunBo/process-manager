@@ -1,16 +1,3 @@
-/**
- * process_manager.c
- * Linux Process Manager - Core Demonstration
- *
- * Demonstrates: fork(), exec(), wait(), waitpid(), kill(),
- *               getpid(), getppid(), nice(), setpriority(),
- *               /proc filesystem access, signal handling
- *
- * Compile: gcc -o process_manager process_manager.c
- * Usage:   ./process_manager [command]
- *   Commands: create, list, kill <pid>, priority <pid> <value>, tree, demo
- */
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,41 +12,36 @@
 #include <fcntl.h>
 #include <time.h>
 
-/* ─── Structures ──────────────────────────────────────────── */
-
 typedef struct {
-    pid_t   pid;
-    pid_t   ppid;
-    char    name[256];
-    char    state;
-    long    priority;
-    long    nice;
-    long    vm_rss;     /* Resident Set Size in kB */
-    long    utime;      /* User CPU time */
-    long    stime;      /* System CPU time */
+    pid_t pid;
+    pid_t ppid;
+    char name[256];
+    char state;
+    long priority;
+    long nice;
+    long vm_rss;
+    long utime;
+    long stime;
 } ProcessInfo;
 
-/* ─── Color codes ─────────────────────────────────────────── */
-#define RED     "\033[1;31m"
-#define GREEN   "\033[1;32m"
-#define YELLOW  "\033[1;33m"
-#define CYAN    "\033[1;36m"
-#define RESET   "\033[0m"
-#define BOLD    "\033[1m"
+#define RED "\033[1;31m"
+#define GREEN "\033[1;32m"
+#define YELLOW "\033[1;33m"
+#define CYAN "\033[1;36m"
+#define RESET "\033[0m"
+#define BOLD "\033[1m"
 
-/* ─── Function prototypes ─────────────────────────────────── */
-pid_t   create_process(const char *program, char *const argv[]);
-int     terminate_process(pid_t pid, int signal_num);
-int     change_priority(pid_t pid, int priority);
-int     read_process_info(pid_t pid, ProcessInfo *info);
-void    list_processes(void);
-void    show_process_tree(pid_t root_pid, int depth);
-void    demonstrate_lifecycle(void);
-void    signal_handler(int signum);
-void    print_banner(void);
-void    print_system_info(void);
+pid_t create_process(const char *program, char *const argv[]);
+int terminate_process(pid_t pid, int signal_num);
+int change_priority(pid_t pid, int priority);
+int read_process_info(pid_t pid, ProcessInfo *info);
+void list_processes(void);
+void show_process_tree(pid_t root_pid, int depth);
+void demonstrate_lifecycle(void);
+void signal_handler(int signum);
+void print_banner(void);
+void print_system_info(void);
 
-/* ─── Signal handler ──────────────────────────────────────── */
 volatile sig_atomic_t child_exited = 0;
 
 void signal_handler(int signum) {
@@ -78,16 +60,8 @@ void signal_handler(int signum) {
     }
 }
 
-/* ─── Process Creation ────────────────────────────────────── */
-/**
- * create_process() - Forks a new child process and execs a program.
- * Uses fork() to duplicate current process, then exec() in the child
- * to replace the image with the target program.
- *
- * Returns child PID on success, -1 on failure.
- */
 pid_t create_process(const char *program, char *const argv[]) {
-    pid_t pid = fork();  /* ← Linux API: duplicate process */
+    pid_t pid = fork();
 
     if (pid < 0) {
         perror("fork() failed");
@@ -95,19 +69,15 @@ pid_t create_process(const char *program, char *const argv[]) {
     }
 
     if (pid == 0) {
-        /* ── CHILD PROCESS ── */
         printf(GREEN "[CHILD] PID=%d, PPID=%d — executing '%s'\n" RESET,
                getpid(), getppid(), program);
 
-        /* Replace child image with target program */
-        execvp(program, argv);  /* ← Linux API: exec family */
+        execvp(program, argv);
 
-        /* exec() only returns on error */
         perror("execvp() failed");
         _exit(EXIT_FAILURE);
 
     } else {
-        /* ── PARENT PROCESS ── */
         printf(CYAN "[PARENT] PID=%d — spawned child PID=%d\n" RESET,
                getpid(), pid);
     }
@@ -115,14 +85,6 @@ pid_t create_process(const char *program, char *const argv[]) {
     return pid;
 }
 
-/* ─── Process Termination ─────────────────────────────────── */
-/**
- * terminate_process() - Sends a signal to a process.
- * SIGTERM = graceful shutdown request
- * SIGKILL  = forced immediate termination (cannot be caught)
- * SIGSTOP  = pause process execution
- * SIGCONT  = resume paused process
- */
 int terminate_process(pid_t pid, int signal_num) {
     const char *sig_name;
     switch (signal_num) {
@@ -135,7 +97,7 @@ int terminate_process(pid_t pid, int signal_num) {
 
     printf(YELLOW "[KILL] Sending %s to PID %d...\n" RESET, sig_name, pid);
 
-    if (kill(pid, signal_num) < 0) {  /* ← Linux API: send signal */
+    if (kill(pid, signal_num) < 0) {
         perror("kill() failed");
         return -1;
     }
@@ -143,41 +105,27 @@ int terminate_process(pid_t pid, int signal_num) {
     return 0;
 }
 
-/* ─── Priority / Scheduling ───────────────────────────────── */
-/**
- * change_priority() - Adjusts process scheduling priority using nice value.
- * Nice range: -20 (highest priority) to +19 (lowest priority).
- * Only root can set negative nice values.
- */
 int change_priority(pid_t pid, int nice_value) {
     if (nice_value < -20 || nice_value > 19) {
         fprintf(stderr, "Nice value must be between -20 and +19\n");
         return -1;
     }
 
-    /* setpriority(PRIO_PROCESS, pid, niceness) */
-    if (setpriority(PRIO_PROCESS, pid, nice_value) < 0) {  /* ← Linux API */
+    if (setpriority(PRIO_PROCESS, pid, nice_value) < 0) {
         perror("setpriority() failed");
         return -1;
     }
 
-    int actual = getpriority(PRIO_PROCESS, pid);  /* ← Linux API: read back */
+    int actual = getpriority(PRIO_PROCESS, pid);
     printf(GREEN "[PRIORITY] PID %d nice value set to %d (actual: %d)\n" RESET,
            pid, nice_value, actual);
     return 0;
 }
 
-/* ─── /proc Filesystem Reader ─────────────────────────────── */
-/**
- * read_process_info() - Reads process details from /proc/<pid>/stat
- * The /proc filesystem is a virtual filesystem in Linux that exposes
- * kernel data structures as files. No disk I/O occurs.
- */
 int read_process_info(pid_t pid, ProcessInfo *info) {
     char path[64], stat_buf[1024], status_buf[4096];
     FILE *fp;
 
-    /* Read /proc/<pid>/stat */
     snprintf(path, sizeof(path), "/proc/%d/stat", pid);
     fp = fopen(path, "r");
     if (!fp) return -1;
@@ -185,7 +133,6 @@ int read_process_info(pid_t pid, ProcessInfo *info) {
     fread(stat_buf, 1, sizeof(stat_buf) - 1, fp);
     fclose(fp);
 
-    /* Parse: pid (name) state ppid ... */
     char name_buf[256];
     long utime, stime, priority, nice_val;
     pid_t ppid;
@@ -204,7 +151,6 @@ int read_process_info(pid_t pid, ProcessInfo *info) {
     info->priority = priority;
     info->nice     = nice_val;
 
-    /* Read /proc/<pid>/status for memory */
     snprintf(path, sizeof(path), "/proc/%d/status", pid);
     fp = fopen(path, "r");
     if (fp) {
@@ -220,9 +166,8 @@ int read_process_info(pid_t pid, ProcessInfo *info) {
     return 0;
 }
 
-/* ─── List Processes ──────────────────────────────────────── */
 void list_processes(void) {
-    DIR *proc_dir = opendir("/proc");  /* ← /proc filesystem */
+    DIR *proc_dir = opendir("/proc");
     if (!proc_dir) { perror("opendir /proc"); return; }
 
     printf("\n" BOLD "%-8s %-8s %-20s %-6s %-8s %-10s\n" RESET,
@@ -234,13 +179,11 @@ void list_processes(void) {
     int count = 0;
 
     while ((entry = readdir(proc_dir)) != NULL) {
-        /* /proc entries that are pure numbers are PID directories */
         pid_t pid = (pid_t)atoi(entry->d_name);
         if (pid <= 0) continue;
 
         if (read_process_info(pid, &info) < 0) continue;
 
-        /* Color by state */
         const char *color;
         char state_name[16];
         switch (info.state) {
@@ -263,7 +206,6 @@ void list_processes(void) {
     printf("Total: %d processes\n\n", count);
 }
 
-/* ─── Process Tree ────────────────────────────────────────── */
 void show_process_tree(pid_t root_pid, int depth) {
     ProcessInfo info;
     if (read_process_info(root_pid, &info) < 0) return;
@@ -273,7 +215,6 @@ void show_process_tree(pid_t root_pid, int depth) {
     printf(CYAN "%s" RESET " [PID: %d, State: %c, Nice: %ld]\n",
            info.name, info.pid, info.state, info.nice);
 
-    /* Find children by scanning /proc */
     DIR *proc_dir = opendir("/proc");
     if (!proc_dir) return;
 
@@ -290,29 +231,16 @@ void show_process_tree(pid_t root_pid, int depth) {
     closedir(proc_dir);
 }
 
-/* ─── Full Lifecycle Demo ─────────────────────────────────── */
-/**
- * demonstrate_lifecycle() - Shows full process lifecycle:
- * 1. Register SIGCHLD handler
- * 2. Fork child process
- * 3. Adjust priority via nice()
- * 4. Send SIGSTOP to pause
- * 5. Send SIGCONT to resume
- * 6. Send SIGTERM to terminate
- * 7. waitpid() to reap zombie
- */
 void demonstrate_lifecycle(void) {
     printf(BOLD "\n═══ Process Lifecycle Demonstration ═══\n\n" RESET);
 
-    /* Step 1: Register signal handler for SIGCHLD */
     struct sigaction sa;
     sa.sa_handler = signal_handler;
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
-    sigaction(SIGCHLD, &sa, NULL);  /* ← Linux API: signal handling */
+    sigaction(SIGCHLD, &sa, NULL);
     printf("✓ SIGCHLD handler registered\n");
 
-    /* Step 2: Create a long-running child */
     printf("\n[1] Creating child process...\n");
     char *argv[] = {"sleep", "30", NULL};
     pid_t child = create_process("sleep", argv);
@@ -320,7 +248,6 @@ void demonstrate_lifecycle(void) {
 
     sleep(1);
 
-    /* Step 3: Read and display child info */
     printf("\n[2] Reading child process info from /proc...\n");
     ProcessInfo info;
     if (read_process_info(child, &info) == 0) {
@@ -328,28 +255,23 @@ void demonstrate_lifecycle(void) {
                info.name, info.pid, info.ppid, info.state, info.nice);
     }
 
-    /* Step 4: Adjust priority */
     printf("\n[3] Lowering process priority (nice +10)...\n");
     change_priority(child, 10);
 
-    /* Step 5: Pause the process */
     printf("\n[4] Pausing process with SIGSTOP...\n");
     terminate_process(child, SIGSTOP);
     sleep(1);
 
-    /* Step 6: Resume the process */
     printf("\n[5] Resuming process with SIGCONT...\n");
     terminate_process(child, SIGCONT);
     sleep(1);
 
-    /* Step 7: Terminate gracefully */
     printf("\n[6] Terminating process with SIGTERM...\n");
     terminate_process(child, SIGTERM);
 
-    /* Step 8: Wait to reap zombie */
     printf("\n[7] Waiting for child to exit (waitpid)...\n");
     int status;
-    pid_t waited = waitpid(child, &status, 0);  /* ← Linux API: reap zombie */
+    pid_t waited = waitpid(child, &status, 0);
     if (waited == child) {
         if (WIFEXITED(status))
             printf(GREEN "✓ Child exited with code %d\n" RESET, WEXITSTATUS(status));
@@ -360,7 +282,6 @@ void demonstrate_lifecycle(void) {
     printf(GREEN "\n✓ Lifecycle demo complete. No zombie processes left.\n\n" RESET);
 }
 
-/* ─── System Info ─────────────────────────────────────────── */
 void print_system_info(void) {
     printf(BOLD "\n─── System Information ───\n" RESET);
     printf("Current PID:  %d\n", getpid());
@@ -368,7 +289,6 @@ void print_system_info(void) {
     printf("Process GID:  %d\n", getpgid(0));
     printf("Session ID:   %d\n", getsid(0));
 
-    /* Read /proc/loadavg */
     FILE *f = fopen("/proc/loadavg", "r");
     if (f) {
         float la1, la5, la15;
@@ -377,7 +297,6 @@ void print_system_info(void) {
         printf("Load Avg:     %.2f %.2f %.2f (1m 5m 15m)\n", la1, la5, la15);
     }
 
-    /* Read /proc/meminfo */
     f = fopen("/proc/meminfo", "r");
     if (f) {
         long total = 0, free_mem = 0, available = 0;
@@ -396,7 +315,6 @@ void print_system_info(void) {
     printf("\n");
 }
 
-/* ─── Banner ──────────────────────────────────────────────── */
 void print_banner(void) {
     printf(CYAN BOLD);
     printf("╔══════════════════════════════════════════════╗\n");
@@ -406,7 +324,6 @@ void print_banner(void) {
     printf(RESET "\n");
 }
 
-/* ─── Main ────────────────────────────────────────────────── */
 int main(int argc, char *argv[]) {
     print_banner();
 
